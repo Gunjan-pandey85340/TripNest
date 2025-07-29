@@ -9,8 +9,12 @@ const cors = require("cors");
 const MONGO_URL = "mongodb://localhost:27017/wanderlust";
 const wrapAsync = require("./utils/wrapAsync.js");
 const ExpressError = require("./utils/ExpressError.js");
-const { listingSchema } = require("./schema.js");
+const { listingSchema ,reviewSchema } = require("./schema.js");
 const { log } = require("console");
+const { valid } = require("joi");
+const Review = require("./models/review.js");
+
+
 
 app.use(cors());
 main()
@@ -38,6 +42,26 @@ app.get("/",(req,res) => {
     res.send("Hi,I am root");
 });
 
+const validateListing = (req,res,next) => {
+    let {error} = listingSchema.validate(req.body);
+    if(error) {
+        let errMsg = error.details.map((el) => el.message).join(",");
+        throw new ExpressError(400 , result.errMsg);
+    }else {
+        next();
+    }
+};
+
+
+const validateReview = (req,res,next) => {
+    let {error} = reviewSchema.validate(req.body);
+    if(error) {
+        let errMsg = error.details.map((el) => el.message).join(",");
+        throw new ExpressError(400 , result.errMsg);
+    }else {
+        next();
+    }
+};
 //index route
 app.get("/listings",async (req,res) => {
     const allListings = await Listing.find({});
@@ -48,14 +72,16 @@ app.get("/listings/new" , (req ,res)=>{
     res.render("listings/new.ejs");
 });
 //Show Route
-app.get("/listings/:id",async(req , res) => {
+app.get("/listings/:id",
+    wrapAsync(async(req , res) => {
     let {id} = req.params;
-    const listing = await Listing.findById(id);
+    const listing = await Listing.findById(id).populate("reviews");
     res.render("listings/show.ejs" , {listing});
-});
+    })
+);
 
 //Create Route
-app.post("/listings",
+app.post("/listings",validateListing,
      wrapAsync(async(req,res,next) => {
         let result = listingSchema.validateAsync(req.body);
         console.log(result);
@@ -77,14 +103,14 @@ app.get("/listings/:id/edit" , async(req ,res) => {
 });
 
 //Update Route
-app.put("/listings/:id" , async(req,res) =>{
-    if(!req.body.listing){
-        throw new ExpressError(400,"Invalid Listing Data");
-    }
+app.put("/listings/:id" , 
+    validateListing,
+    wrapAsync(async(req,res) =>{
     let { id } = req.params;
     await Listing.findByIdAndUpdate(id , {...req.body.listing});
     res.redirect(`/listings/${id}`);
-});
+})
+);
 //Delete Route
 app.delete("/listings/:id" ,
     wrapAsync(async(req,res) => {
@@ -94,6 +120,19 @@ app.delete("/listings/:id" ,
     res.redirect("/listings");
     })
 );
+
+//Reviews
+//Post Route for Reviews
+app.post("/listings/:id/reviews", validateReview, wrapAsync(async(req,res) => {
+   let = listing= await Listing.findById(req.params.id);
+   let newReview = new Review(req.body.review);
+   listing.reviews.push(newReview);
+
+    await newReview.save();
+    await listing.save();
+    res.redirect(`/listings/${listing._id}`);
+}));
+
 
 // app.get("/testListing", async(req,res) => {
 //     let sampleListing = new Listing({
